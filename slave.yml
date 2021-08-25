@@ -1,0 +1,64 @@
+---
+    # compute-video-demo-ansible
+    - name: Create Compute Engine instances
+      hosts: localhost
+      gather_facts: no
+      vars:
+        gcp_project: keen-alignment-321607
+        gcp_cred_kind: serviceaccount
+        gcp_cred_file: credentials.json
+        zone: "us-central1-a"
+        region: "us-central1"
+        machine_type: "n1-standard-1"
+        image: "projects/centos-cloud/global/images/family/centos-8"
+    
+      tasks:
+        - name: Create an IP address for Slave
+          gcp_compute_address:
+            name: slave-ip
+            region: "{{ region }}"
+            project: "{{ gcp_project }}"
+            service_account_file: "{{ gcp_cred_file }}"
+            auth_kind: "{{ gcp_cred_kind }}"
+          register: slave_ip
+      
+        - name: Creating VM for slave node 
+          gcp_compute_instance:
+            name: slavenode
+            machine_type: "{{ machine_type }}"
+            disks:
+              - auto_delete: true
+                boot: true
+                initialize_params:
+                  source_image: "{{ image }}"
+            network_interfaces:
+              - access_configs:
+                  - name: External NAT
+                    nat_ip: "{{ slave_ip }}"
+                    type: ONE_TO_ONE_NAT
+            tags:
+              items:
+                - kube-slave
+            zone: "{{ zone }}"
+            project: "{{ gcp_project }}"
+            service_account_file: "{{ gcp_cred_file }}"
+            auth_kind: "{{ gcp_cred_kind }}"
+          register: slave
+
+      post_tasks:
+        - name: Wait for SSH for instance
+          wait_for: delay=5 sleep=5 host={{ slave_ip.address }} port=22 state=started timeout=100
+        - name: Save host data for Slave Node
+          add_host: hostname={{ slave_ip.address }} groupname=gce_slave
+
+    - name: Configuring Kubernetes Slave Node
+      hosts: gce_slave
+      remote_user: sabir
+      become: yes
+      become_method: sudo
+      vars_prompt:
+          - name: master_token
+            prompt: Please Enter the master token no
+            private: no      
+      roles:
+         - roles/slave

@@ -1,0 +1,98 @@
+---
+# tasks file for slave
+- name: Add repository for kubeadm
+  yum_repository:
+    name: Kubernetes
+    description: YUM repo for kubeadm 
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+    enabled: yes
+    gpgcheck: yes
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    repo_gpgcheck: 1
+           
+- name: Install the software for confiuring cluster
+  package:
+          name: "{{ item }}"      
+          state: present
+  loop:
+          - docker
+          - iproute-tc
+          - kubeadm   
+
+            #- name: Install the kubeadm
+            #  command: "yum install kubeadm --disableexcludes=kubernetes"  
+
+- name: Start the services
+  service:
+         name:  "{{ item }}"
+         state: started
+         enabled: yes
+  loop:
+          - docker
+          - kubelet  
+
+- name: change the driver of docker
+  copy: 
+       dest: /etc/docker/daemon.json
+       content: |
+            {
+                "exec-opts": ["native.cgroupdriver=systemd"]
+            } 
+- name: Restart the docker service
+  service:
+          name: docker 
+          state: restarted
+
+- name: Download all the images for kubernetes master
+  command: "kubeadm config images pull" 
+  
+
+- name: Update the iptables
+  copy: 
+        dest: /etc/sysctl.d/k8s.conf
+        content: |
+         net.bridge.bridge-nf-call-ip6tables = 1
+         net.bridge.bridge-nf-call-iptables = 1
+
+- name: load the iptables
+  command: "sysctl --system"  
+
+
+- name: Initialize the master node
+  command: "kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=NumCPU --ignore-preflight-errors=Mem" 
+
+
+- name: Create a directory for kubectl command
+  file: 
+      path: $HOME/.kube
+      state: directory
+
+- name: Copy the config file to the workspace
+  copy:
+       src: /etc/kubernetes/admin.conf
+       dest: $HOME/.kube/config
+
+- name: run kubeadm command
+  command: kubeadm token create --print-join-command
+  register: token
+
+- name: Print the token
+  debug:
+  var: token.stdout
+
+
+
+- name: save the var file into the a file
+  copy:
+       content: |
+          #!/bin/bash
+          {{ token.stdout }}
+       dest: /root/token.sh
+
+
+
+  
+
+
+
+
