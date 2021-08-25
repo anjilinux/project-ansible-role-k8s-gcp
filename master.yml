@@ -1,5 +1,4 @@
 ---
-    # compute-video-demo-ansible
     - name: Create Compute Engine instances
       hosts: localhost
       gather_facts: no
@@ -50,6 +49,9 @@
           wait_for: delay=5 sleep=5 host={{ master_ip.address }} port=22 state=started timeout=100
         - name: Save host data for Masternode
           add_host: hostname={{ master_ip.address }} groupname=gce_masternode
+        - name: Pause for 1 minutes to ready instance
+          pause:
+            minutes: 1
 
     - name: Configuring Kubernetes Master
       hosts: gce_masternode
